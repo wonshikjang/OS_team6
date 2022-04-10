@@ -90,9 +90,10 @@ struct thread
     int priority;                       /* Priority. */
     struct list_elem allelem;           /* List element for all threads list. */
 
-/******************my edits******************/
-    int64_t ttwakeup;			/* Time to wakeup. */
+/******************hw1*****************/
+    int64_t wakeup_tick;			/* Time to wakeup. */
 /*******************************************/
+
 /*hw2***********************/
     int init_priority;
     struct lock *waitinglock;
@@ -150,9 +151,10 @@ void thread_set_nice (int);
 int thread_get_recent_cpu (void);
 int thread_get_load_avg (void);
 
-/*****************myedits***********/
-void thread_sleep(int64_t ticks);
-void thread_awake(int64_t ticks);
+/****************hw1**********/
+void move_thread_block(int64_t ticks);
+void move_thread_unblock(int64_t ticks);
+bool compare_tick(const struct list_elem *x, const struct list_elem *y, void *aux);
 
 /*hw2*********************************/
 int priorGreater(struct list_elem *a, struct list_elem *b, void *aux UNUSED);

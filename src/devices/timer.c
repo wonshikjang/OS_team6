@@ -90,7 +90,7 @@ void
 timer_sleep (int64_t ticks) 
 {
   int64_t start = timer_ticks ();
-  thread_sleep(start+ticks);
+  move_thread_block(start+ticks);
   /*
   ASSERT (intr_get_level () == INTR_ON);
   while (timer_elapsed (start) < ticks) 
@@ -175,8 +175,8 @@ timer_interrupt (struct intr_frame *args UNUSED)
   ticks++;
   thread_tick ();
 
-/*************myedits************/
-  thread_awake (ticks);
+/*************hw1***********/
+  move_thread_unblock (ticks);
 /********************************/
 }
 
