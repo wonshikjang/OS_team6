@@ -368,7 +368,7 @@ thread_set_priority (int new_priority)
 {
 /*hw2*************************/
   thread_current ()->init_priority = new_priority;
-  refrsh_prior();
+  refrsh_priority();
   chk_curismax();
 /**********************************/
 }

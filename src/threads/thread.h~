@@ -158,9 +158,6 @@ void thread_awake(int64_t ticks);
 int priorGreater(struct list_elem *a, struct list_elem *b, void *aux UNUSED);
 void chk_curismax(void);
 
-void donatePrior(void);
-void refrsh_changedby(struct lock *);
-void refrsh_prior(void);
 
 /***********************************/
 #endif /* threads/thread.h */
