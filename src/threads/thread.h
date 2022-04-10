@@ -144,5 +144,9 @@ void move_thread_block(int64_t ticks);
 void move_thread_unblock(int64_t ticks);
 bool compare_tick(const struct list_elem *x, const struct list_elem *y, void *aux);
 
+//priority scheduling
+void thread_priority_check(void);
+bool compare_priority(const struct list_elem *X, const struct list_elem *y, void *aux);
+
 
 #endif /* threads/thread.h */
