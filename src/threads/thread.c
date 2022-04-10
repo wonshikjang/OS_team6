@@ -46,7 +46,7 @@ struct kernel_thread_frame
   };
 
 /************myedits************/
-static struct list onsleep_list;
+static struct list block_list;
 /*******************************/
 
 /* Statistics. */
@@ -102,11 +102,10 @@ thread_init (void)
   list_init (&ready_list);
   list_init (&all_list);
 
-  /**********myedits**************/
-  list_init (&onsleep_list);
+  /*********hw1**************/
+  list_init (&block_list);
 
-  /**********endmy****************/
-
+  
   /* Set up a thread structure for the running thread. */
   initial_thread = running_thread ();
   init_thread (initial_thread, "main", PRI_DEFAULT);
@@ -619,38 +618,52 @@ allocate_tid (void)
    Used by switch.S, which can't figure it out on its own. */
 uint32_t thread_stack_ofs = offsetof (struct thread, stack);
 
-/*************myedits*************/
-void
-thread_sleep (int64_t ticks)
-{
-  struct thread *cur;
-  enum intr_level prev_intr_level;
-  prev_intr_level = intr_disable();
-  cur = thread_current();
-
-  ASSERT (cur != idle_thread);
-
-  cur->ttwakeup = ticks;
-  list_push_back(&onsleep_list, &cur->elem);
-  thread_block();
-  intr_set_level(prev_intr_level);
-}
-
-void
-thread_awake (int64_t ticks)
-{
-  struct list_elem *cure = list_begin(&onsleep_list);
-
-  while(cure != list_end(&onsleep_list)){
-    struct thread *t = list_entry (cure, struct thread, elem);
-	if(t->ttwakeup <= ticks){
-	  cure = list_remove(cure);
-	  thread_unblock(t);
+/*************hw1*************/
+void move_thread_block(int64_t ticks){
+	struct thread *cur_thread = thread_current();
+	enum intr_level old_level;
+	ASSERT(!intr_context());
+	old_level = intr_disable();
+	if(cur_thread != idle_thread){
+		cur_thread -> wakeup_tick = ticks;
+		list_insert_ordered(&block_list, &cur_thread->elem, compare_tick, NULL);
+		thread_block();
 	}
-	else
-	  cure = list_next(cure);
-  }
+	intr_set_level(old_level);
+
 }
+void move_thread_unblock(int64_t ticks){
+	enum intr_level old_level;
+	ASSERT(intr_get_level() == INTR_OFF);
+	old_level = intr_disable();	
+
+
+	while(!list_empty(&block_list)){
+		struct list_elem *head = list_begin(&block_list);
+		int64_t first_tick = list_entry(head, struct thread, elem)->wakeup_tick;
+		if(first_tick <= ticks){
+			struct thread *will_unblock = list_entry(list_pop_front(&block_list),struct thread,elem);
+			thread_unblock(will_unblock);		
+		}
+		else{
+			break;
+		} 
+	intr_set_level(old_level);
+	}
+
+}
+bool compare_tick(const struct list_elem *x, const struct list_elem *y, void *aux){
+	struct thread *x_thread = list_entry(x, struct thread, elem);
+	struct thread *y_thread = list_entry(y, struct thread, elem);
+	if(x_thread -> wakeup_tick < y_thread -> wakeup_tick){
+		return true;
+	}
+	else{
+		return false;
+	}
+
+}
+
 /******************************/
 /*hw2*************************/
 int
@@ -680,11 +693,14 @@ donatePrior (void)
   int i, curp=tth->priority;
   for(i=0;i<9;i++)
     {
-    if(tth->waitinglock==NULL) break;
-
-    tth=tth->waitinglock->holder;
-    tth->priority=curp;
-    }
+    if(tth->waitinglock==NULL) 
+		break;
+	else
+		{	
+		tth=tth->waitinglock->holder;
+    	tth->priority=curp;
+		}    
+	}
 }
 
 void
@@ -692,14 +708,11 @@ refrsh_changedby(struct lock *lock)
 {
   struct thread *curth=thread_current();
   struct list_elem *elemOfchangedby=list_begin(&curth->changedby);
-
+  struct thread *tth;
   while(elemOfchangedby!=list_end(&curth->changedby))
     {
-    struct thread *tth=list_entry(elemOfchangedby, struct thread, elem_changedby);
-    if(tth->waitinglock==lock)
-      elemOfchangedby=list_remove(elemOfchangedby);
-    else
-      elemOfchangedby=list_next(elemOfchangedby);
+    tth = list_entry(elemOfchangedby, struct thread, elem_changedby);
+    elemOfchangedby=((tth->waitinglock==lock)?list_remove(elemOfchangedby):list_next(elemOfchangedby));
     }
 }
 
@@ -707,12 +720,12 @@ void
 refrsh_prior(void)
 {
   struct thread *curth=thread_current();
+  struct thread *max;
   curth->priority=curth->init_priority;
 
   if(!list_empty(&curth->changedby))
     {
     list_sort(&curth->changedby, &priorGreater, NULL);
-    struct thread *max;
     max=list_entry(list_front(&curth->changedby), struct thread, elem_changedby);
     if(max->priority>curth->priority)
       curth->priority=max->priority;
