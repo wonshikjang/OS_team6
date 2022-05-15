@@ -45,10 +45,6 @@ struct kernel_thread_frame
     void *aux;                  /* Auxiliary data for function. */
   };
 
-/************myedits************/
-static struct list block_list;
-/*******************************/
-
 /* Statistics. */
 static long long idle_ticks;    /* # of timer ticks spent idle. */
 static long long kernel_ticks;  /* # of timer ticks in kernel threads. */
@@ -75,11 +71,6 @@ static void schedule (void);
 void thread_schedule_tail (struct thread *prev);
 static tid_t allocate_tid (void);
 
-/*hw2********************/
-int priorGreater(struct list_elem *a, struct list_elem *b, void *aux UNUSED);
-void chk_curismax(void);
-/****************************/
-
 /* Initializes the threading system by transforming the code
    that's currently running into a thread.  This can't work in
    general and it is possible in this case only because loader.S
@@ -102,10 +93,6 @@ thread_init (void)
   list_init (&ready_list);
   list_init (&all_list);
 
-  /*********hw1**************/
-  list_init (&block_list);
-
-  
   /* Set up a thread structure for the running thread. */
   initial_thread = running_thread ();
   init_thread (initial_thread, "main", PRI_DEFAULT);
@@ -221,7 +208,7 @@ thread_create (const char *name, int priority,
 
   /* Add to run queue. */
   thread_unblock (t);
-  chk_curismax();
+
   return tid;
 }
 
@@ -258,12 +245,7 @@ thread_unblock (struct thread *t)
 
   old_level = intr_disable ();
   ASSERT (t->status == THREAD_BLOCKED);
-
-/*hw2**********************************/
-//  list_push_back (&ready_list, &t->elem);
-  list_insert_ordered(&ready_list, &t->elem, &priorGreater, NULL);
-/****************************************/
-
+  list_push_back (&ready_list, &t->elem);
   t->status = THREAD_READY;
   intr_set_level (old_level);
 }
@@ -334,11 +316,7 @@ thread_yield (void)
 
   old_level = intr_disable ();
   if (cur != idle_thread) 
-/*hw2*******************/
-//    list_push_back (&ready_list, &cur->elem);
-    list_insert_ordered(&ready_list, &cur->elem, &priorGreater, NULL);
-/************************/
-
+    list_push_back (&ready_list, &cur->elem);
   cur->status = THREAD_READY;
   schedule ();
   intr_set_level (old_level);
@@ -365,11 +343,7 @@ thread_foreach (thread_action_func *func, void *aux)
 void
 thread_set_priority (int new_priority) 
 {
-/*hw2*************************/
-  thread_current ()->init_priority = new_priority;
-  refrsh_prior();
-  chk_curismax();
-/**********************************/
+  thread_current ()->priority = new_priority;
 }
 
 /* Returns the current thread's priority. */
@@ -495,12 +469,6 @@ init_thread (struct thread *t, const char *name, int priority)
   t->stack = (uint8_t *) t + PGSIZE;
   t->priority = priority;
   t->magic = THREAD_MAGIC;
-
-/*hw2***********************/
-  t->init_priority=priority;
-  list_init(&t->changedby);
-  t->waitinglock=NULL;
-/************************/
   list_push_back (&all_list, &t->allelem);
 }
 
@@ -617,119 +585,3 @@ allocate_tid (void)
 /* Offset of `stack' member within `struct thread'.
    Used by switch.S, which can't figure it out on its own. */
 uint32_t thread_stack_ofs = offsetof (struct thread, stack);
-
-/*************hw1*************/
-void move_thread_block(int64_t ticks){
-	struct thread *cur_thread = thread_current();
-	enum intr_level old_level;
-	ASSERT(!intr_context());
-	old_level = intr_disable();
-	if(cur_thread != idle_thread){
-		cur_thread -> wakeup_tick = ticks;
-		list_insert_ordered(&block_list, &cur_thread->elem, compare_tick, NULL);
-		thread_block();
-	}
-	intr_set_level(old_level);
-
-}
-void move_thread_unblock(int64_t ticks){
-	enum intr_level old_level;
-	ASSERT(intr_get_level() == INTR_OFF);
-	old_level = intr_disable();	
-
-
-	while(!list_empty(&block_list)){
-		struct list_elem *head = list_begin(&block_list);
-		int64_t first_tick = list_entry(head, struct thread, elem)->wakeup_tick;
-		if(first_tick <= ticks){
-			struct thread *will_unblock = list_entry(list_pop_front(&block_list),struct thread,elem);
-			thread_unblock(will_unblock);		
-		}
-		else{
-			break;
-		} 
-	intr_set_level(old_level);
-	}
-
-}
-bool compare_tick(const struct list_elem *x, const struct list_elem *y, void *aux){
-	struct thread *x_thread = list_entry(x, struct thread, elem);
-	struct thread *y_thread = list_entry(y, struct thread, elem);
-	if(x_thread -> wakeup_tick < y_thread -> wakeup_tick){
-		return true;
-	}
-	else{
-		return false;
-	}
-
-}
-
-/******************************/
-/*hw2*************************/
-int
-priorGreater (struct list_elem *a, struct list_elem *b, void *aux UNUSED)
-{
-  struct thread *tha=list_entry(a, struct thread, elem);
-  struct thread *thb=list_entry(b, struct thread, elem);
-
-  return (tha->priority - thb->priority > 0)?1:0;
-}
-
-void
-chk_curismax (void)
-{
-  if(list_empty(&ready_list)) return;
-
-  int curp=thread_current()->priority;
-  struct thread *nextth=list_entry(list_begin(&ready_list), struct thread, elem);
-
-  if(curp < nextth->priority) thread_yield();
-}
-
-void
-donatePrior (void)
-{
-  struct thread *tth=thread_current();
-  int i, curp=tth->priority;
-  for(i=0;i<9;i++)
-    {
-    if(tth->waitinglock==NULL) 
-		break;
-	else
-		{	
-		tth=tth->waitinglock->holder;
-    	tth->priority=curp;
-		}    
-	}
-}
-
-void
-refrsh_changedby(struct lock *lock)
-{
-  struct thread *curth=thread_current();
-  struct list_elem *elemOfchangedby=list_begin(&curth->changedby);
-  struct thread *tth;
-  while(elemOfchangedby!=list_end(&curth->changedby))
-    {
-    tth = list_entry(elemOfchangedby, struct thread, elem_changedby);
-    elemOfchangedby=((tth->waitinglock==lock)?list_remove(elemOfchangedby):list_next(elemOfchangedby));
-    }
-}
-
-void
-refrsh_prior(void)
-{
-  struct thread *curth=thread_current();
-  struct thread *max;
-  curth->priority=curth->init_priority;
-
-  if(!list_empty(&curth->changedby))
-    {
-    list_sort(&curth->changedby, &priorGreater, NULL);
-    max=list_entry(list_front(&curth->changedby), struct thread, elem_changedby);
-    if(max->priority>curth->priority)
-      curth->priority=max->priority;
-    }
-}
-//end hw2
-/*********************************/

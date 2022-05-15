@@ -29,8 +29,6 @@ tid_t
 process_execute (const char *file_name) 
 {
   char *fn_copy;
-  char *token;
-  char *save_ptr;
   tid_t tid;
 
   /* Make a copy of FILE_NAME.
@@ -39,11 +37,9 @@ process_execute (const char *file_name)
   if (fn_copy == NULL)
     return TID_ERROR;
   strlcpy (fn_copy, file_name, PGSIZE);
-  
-  token = strtok_r(file_name, " ", &save_ptr);
-  printf("\n%s\n", token);
+
   /* Create a new thread to execute FILE_NAME. */
-  tid = thread_create (token, PRI_DEFAULT, start_process, fn_copy);
+  tid = thread_create (file_name, PRI_DEFAULT, start_process, fn_copy);
   if (tid == TID_ERROR)
     palloc_free_page (fn_copy); 
   return tid;
@@ -57,14 +53,14 @@ start_process (void *file_name_)
   char *file_name = file_name_;
   struct intr_frame if_;
   bool success;
-  
+
   /* Initialize interrupt frame and load executable. */
   memset (&if_, 0, sizeof if_);
   if_.gs = if_.fs = if_.es = if_.ds = if_.ss = SEL_UDSEG;
   if_.cs = SEL_UCSEG;
   if_.eflags = FLAG_IF | FLAG_MBS;
   success = load (file_name, &if_.eip, &if_.esp);
-  
+
   /* If load failed, quit. */
   palloc_free_page (file_name);
   if (!success) 
@@ -90,9 +86,8 @@ start_process (void *file_name_)
    This function will be implemented in problem 2-2.  For now, it
    does nothing. */
 int
-process_wait (tid_t child_tid) 
+process_wait (tid_t child_tid UNUSED) 
 {
-  while(1);
   return -1;
 }
 
@@ -200,7 +195,7 @@ struct Elf32_Phdr
 #define PF_W 2          /* Writable. */
 #define PF_R 4          /* Readable. */
 
-static bool setup_stack (void **esp, int argc, char *[]);
+static bool setup_stack (void **esp);
 static bool validate_segment (const struct Elf32_Phdr *, struct file *);
 static bool load_segment (struct file *file, off_t ofs, uint8_t *upage,
                           uint32_t read_bytes, uint32_t zero_bytes,
@@ -219,34 +214,15 @@ load (const char *file_name, void (**eip) (void), void **esp)
   off_t file_ofs;
   bool success = false;
   int i;
-  char *argv[64];
-	int argc = 1;
-  char *fn;
-  char *save_ptr;
 
   /* Allocate and activate page directory. */
   t->pagedir = pagedir_create ();
   if (t->pagedir == NULL) 
     goto done;
   process_activate ();
-  
-  fn = palloc_get_page(0);
-  printf("\n1. fn is %s\n", fn);
-  if (fn == NULL)
-    goto done;
-  strlcpy(fn, file_name, PGSIZE);
-  printf("\n2. fn is %s (after strlcpy)\n", fn);
-  argv[0] = strtok_r(fn, " ", &save_ptr);
-  printf("\n3. now argv[0] is %s (after strlcpy)\n", argv[0]);
-  while(1)
-  {
-    argv[argc] = strtok_r(NULL, " ", &save_ptr);
-    if (argv[argc] == NULL) break;
-    argc++;
-  }
-  
+
   /* Open executable file. */
-  file = filesys_open (argv[0]);
+  file = filesys_open (file_name);
   if (file == NULL) 
     {
       printf ("load: %s: open failed\n", file_name);
@@ -326,7 +302,7 @@ load (const char *file_name, void (**eip) (void), void **esp)
     }
 
   /* Set up stack. */
-  if (!setup_stack (esp, argc, argv))
+  if (!setup_stack (esp))
     goto done;
 
   /* Start address. */
@@ -451,54 +427,20 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
 /* Create a minimal stack by mapping a zeroed page at the top of
    user virtual memory. */
 static bool
-setup_stack (void **esp, int argc, char *argv[])
+setup_stack (void **esp) 
 {
   uint8_t *kpage;
   bool success = false;
-  int i, len = 0;
-  void* argv_addr[argc];
+
   kpage = palloc_get_page (PAL_USER | PAL_ZERO);
   if (kpage != NULL) 
-  {
-    success = install_page (((uint8_t *) PHYS_BASE) - PGSIZE, kpage, true);
-    if (success)
     {
-      *esp = PHYS_BASE;
-      for (i = 0; i < argc; i++) {
-        len = strlen(argv[i]) + 1;
-        *esp -= len;
-        memcpy(*esp, argv[i], len);
-        argv_addr[i] = *esp;
-      }
-
-      // word align
-      *esp = (void*)((unsigned int)(*esp) & 0xfffffffc);
-
-      // last null
-      *esp -= 4;
-      *((uint32_t*) *esp) = 0;
-
-      // setting **esp with argvs
-      for (i = argc - 1; i >= 0; i--) {
-        *esp -= 4;
-        *((void**) *esp) = argv_addr[i];
-      }
-
-      // setting **argv (addr of stack, esp)
-      *esp -= 4;
-      *((void**) *esp) = (*esp + 4);
-
-      // setting argc
-      *esp -= 4;
-      *((int*) *esp) = argc;
-
-      // setting ret addr
-      *esp -= 4;
-      *((int*) *esp) = 0;
-      }
+      success = install_page (((uint8_t *) PHYS_BASE) - PGSIZE, kpage, true);
+      if (success)
+        *esp = PHYS_BASE;
       else
         palloc_free_page (kpage);
-  }
+    }
   return success;
 }
 

@@ -90,19 +90,6 @@ struct thread
     int priority;                       /* Priority. */
     struct list_elem allelem;           /* List element for all threads list. */
 
-/******************hw1*****************/
-    int64_t wakeup_tick;			/* Time to wakeup. */
-/*******************************************/
-
-/*hw2***********************/
-    int init_priority;
-    struct lock *waitinglock;
-    struct list changedby;
-    struct list_elem elem_changedby;
-
-
-/*********************/
-
     /* Shared between thread.c and synch.c. */
     struct list_elem elem;              /* List element. */
 
@@ -151,18 +138,4 @@ void thread_set_nice (int);
 int thread_get_recent_cpu (void);
 int thread_get_load_avg (void);
 
-/****************hw1**********/
-void move_thread_block(int64_t ticks);
-void move_thread_unblock(int64_t ticks);
-bool compare_tick(const struct list_elem *x, const struct list_elem *y, void *aux);
-
-/*hw2*********************************/
-int priorGreater(struct list_elem *a, struct list_elem *b, void *aux UNUSED);
-void chk_curismax(void);
-
-void donatePrior(void);
-void refrsh_changedby(struct lock *);
-void refrsh_prior(void);
-
-/***********************************/
 #endif /* threads/thread.h */
