@@ -20,12 +20,11 @@
    of thread.h for details. */
 #define THREAD_MAGIC 0xcd6abf4b
 
+static bool compare_priority (const struct list_elem *, const struct list_elem *, void *aux);
+
 /* List of processes in THREAD_READY state, that is, processes
    that are ready to run but not actually running. */
 static struct list ready_list;
-
-/* List of processes in sleep (wait) state (i.e. wait queue). */
-static struct list wait_list;
 
 /* List of all processes.  Processes are added to this list
    when they are first scheduled and removed when they exit. */
@@ -39,6 +38,8 @@ static struct thread *initial_thread;
 
 /* Lock used by allocate_tid(). */
 static struct lock tid_lock;
+
+static struct list wait_list;
 
 /* Stack frame for kernel_thread(). */
 struct kernel_thread_frame
@@ -73,13 +74,7 @@ static void *alloc_frame (struct thread *, size_t size);
 static void schedule (void);
 void thread_schedule_tail (struct thread *prev);
 static tid_t allocate_tid (void);
-
-void thread_awake (int64_t current_tick);
-
-/* Helper (Auxiliary) functions */
-static bool comparator_greater_thread_priority
-  (const struct list_elem *, const struct list_elem *, void *aux);
-
+void thread_awake (int32_t current_tick);
 
 /* Initializes the threading system by transforming the code
    that's currently running into a thread.  This can't work in
@@ -109,7 +104,7 @@ thread_init (void)
   init_thread (initial_thread, "main", PRI_DEFAULT);
   initial_thread->status = THREAD_RUNNING;
   initial_thread->tid = allocate_tid ();
-  initial_thread->sleep_endtick = 0; // a dummy value
+  initial_thread->wake_tick = 0; // a dummy value
 }
 
 /* Starts preemptive thread scheduling by enabling interrupts.
@@ -135,7 +130,7 @@ thread_start (void)
    The parameter 'tick' is the current tick count held by
    the timer device. */
 void
-thread_tick (int64_t tick)
+thread_tick (int32_t tick)
 {
   struct thread *t = thread_current ();
 
@@ -149,7 +144,6 @@ thread_tick (int64_t tick)
   else
     kernel_ticks++;
 
-  /* Wake any thread whose ticks_end has been expired. */
   thread_awake(tick);
 
   /* Enforce preemption. */
@@ -157,31 +151,23 @@ thread_tick (int64_t tick)
     intr_yield_on_return ();
 }
 
-/* Wake up all sleeping threads whose ticks_end has been expired,
-   removing from the wait queue and pushing it into the ready queue.
-
-   This function must be called with interrupts turned off. */
 void
-thread_awake (int64_t current_tick) {
+thread_awake (int32_t current_tick) {
   struct list_elem *e;
+  struct thread *t;
 
-  // interrupt level check
   ASSERT (intr_get_level () == INTR_OFF);
 
-  // enumerate all threads in wait queue
   for (e = list_begin (&wait_list); e != list_end (&wait_list); e = list_next (e))
     {
-      struct thread *t = list_entry (e, struct thread, waitelem);
-      if (t->sleep_endtick <= current_tick) {
-        /* sleep is expired. awake up t */
-        t->sleep_endtick = 0;
+      t = list_entry (e, struct thread, waitelem);
+      if (t->wake_tick <= current_tick) {
+        t->wake_tick = 0;
         list_remove (&t->waitelem);
-        // Add to run queue.
         thread_unblock (t);
       }
     }
 }
-
 
 /* Prints thread statistics. */
 void
@@ -245,35 +231,10 @@ thread_create (const char *name, int priority,
   /* Add to run queue. */
   thread_unblock (t);
 
-  /* If the newly created thread has a higher priority than
-   * the currently running thread, then there should be an
-   * immediate context switching, for thread priority scheduling. */
-  if (priority > thread_current()->priority) {
-    // current thread releases off its running
-    thread_yield();
-  }
+  if (priority > thread_current()->priority) thread_yield();
 
   return tid;
 }
-
-/* Make the current thread T to sleep, until the timer ticks
-   reaches 'ticks_end'.
-
-   It subsequently calls thread_block(), making T sleep actually.
-   This function must be called with interrupts turned off. */
-void
-thread_sleep_until (int64_t ticks_end)
-{
-  struct thread *t = thread_current();
-  t->sleep_endtick = ticks_end;
-
-  // put T into the wait queue
-  list_push_back (&wait_list, &t->waitelem);
-
-  // make the current thread block (sleeped)
-  thread_block();
-}
-
 
 /* Puts the current thread to sleep.  It will not be scheduled
    again until awoken by thread_unblock().
@@ -308,14 +269,10 @@ thread_unblock (struct thread *t)
 
   old_level = intr_disable ();
   ASSERT (t->status == THREAD_BLOCKED);
-
-  // t will turn into ready-to-run state : inserting into ready_list
-  // maintaining in the non-decreasing order of thread priority
-  list_insert_ordered (&ready_list, &t->elem, comparator_greater_thread_priority, NULL);
+  list_insert_ordered (&ready_list, &t->elem, compare_priority, NULL);
 
   t->status = THREAD_READY;
 
-  // ensure preemption : compare priorities of current thread and t (to be unblocked),
   if (thread_current() != idle_thread && thread_current()->priority < t->priority )
     thread_yield();
 
@@ -366,15 +323,6 @@ thread_exit (void)
   process_exit ();
 #endif
 
-  struct thread *curr = thread_current();
-
-  // release all locks
-  struct list_elem *e;
-  for (e = list_begin (&curr->locks); e != list_end (&curr->locks); e = list_next (e)) {
-    struct lock *lock = list_entry(e, struct lock, lockelem);
-    lock_release(lock);
-  }
-
   /* Remove thread from all threads list, set our status to dying,
      and schedule another process.  That process will destroy us
      when it calls thread_schedule_tail(). */
@@ -396,10 +344,8 @@ thread_yield (void)
   ASSERT (!intr_context ());
 
   old_level = intr_disable ();
-  if (cur != idle_thread) {
-    // t will turn into ready-to-run state : inserting into ready_list
-    list_insert_ordered (&ready_list, &cur->elem, comparator_greater_thread_priority, NULL);
-  }
+  if (cur != idle_thread)
+    list_insert_ordered (&ready_list, &cur->elem, compare_priority, NULL);
   cur->status = THREAD_READY;
   schedule ();
   intr_set_level (old_level);
@@ -423,51 +369,40 @@ thread_foreach (thread_action_func *func, void *aux)
 }
 
 
-/* Sets the current thread's priority to NEW_PRIORITY when a donation
-   was not performed. */
+/* Sets the current thread's priority to NEW_PRIORITY. */
 void
 thread_set_priority (int new_priority)
 {
-  // if the current thread has no donation, then it is normal priority change request.
   struct thread *t_current = thread_current();
-  if (t_current->priority == t_current->original_priority) {
+  struct thread *t_next;
+
+  if (t_current->priority == t_current->original_priority)
+  {
     t_current->priority = new_priority;
     t_current->original_priority = new_priority;
   }
-  // otherwise, it has a donation: the original priority only should have changed
-  else {
-    t_current->original_priority = new_priority;
-  }
+  else t_current->original_priority = new_priority;
 
-  // if current thread gets its priority decreased, then yield
-  // (foremost entry in ready_list shall have the highest priority)
-  if (!list_empty (&ready_list)) {
-    struct thread *next = list_entry(list_begin(&ready_list), struct thread, elem);
-    if (next != NULL && next->priority > new_priority) {
-      thread_yield();
-    }
+  if (!list_empty (&ready_list))
+  {
+    t_next = list_entry(list_begin(&ready_list), struct thread, elem);
+    if (t_next != NULL && t_next->priority > new_priority) thread_yield();
   }
 
 }
 
-/* Let the thread [target] be donated the priority. */
 void
 thread_priority_donate(struct thread *target, int new_priority)
 {
-  // donation : change only current priority
+  struct thread *t_next;
   target->priority = new_priority;
 
-  // if current thread gets its priority decreased, then yield
-  // (foremost entry in ready_list shall have the highest priority)
-  if (target == thread_current() && !list_empty (&ready_list)) {
-    struct thread *next = list_entry(list_begin(&ready_list), struct thread, elem);
-    if (next != NULL && next->priority > new_priority) {
-      thread_yield();
-    }
+  if (target == thread_current() && !list_empty (&ready_list))
+  {
+    t_next = list_entry(list_begin(&ready_list), struct thread, elem);
+    if (t_next != NULL && t_next->priority > new_priority) thread_yield();
   }
-
 }
-
 
 /* Returns the current thread's priority. */
 int
@@ -596,7 +531,7 @@ init_thread (struct thread *t, const char *name, int priority)
   t->original_priority = priority;
   t->waiting_lock = NULL;
   list_init (&t->locks);
-  t->sleep_endtick = 0;
+  t->wake_tick = 0;
   t->magic = THREAD_MAGIC;
 
   old_level = intr_disable ();
@@ -604,7 +539,6 @@ init_thread (struct thread *t, const char *name, int priority)
   intr_set_level (old_level);
 
 #ifdef USERPROG
-  // init process-related informations.
   t->pcb = NULL;
   list_init(&t->child_list);
   list_init(&t->file_descriptors);
@@ -722,24 +656,31 @@ allocate_tid (void)
   return tid;
 }
 
-/* Helper function: implementations */
-
-// A comparator function for thread priority, w.r.t ready_list element.
-// returns true iff (thread a)'s priority > (thread b)'s priority.
-static bool
-comparator_greater_thread_priority (
-    const struct list_elem *a,
-    const struct list_elem *b, void *aux UNUSED)
-{
-  struct thread *ta, *tb;
-  ASSERT (a != NULL);
-  ASSERT (b != NULL);
-  ta = list_entry (a, struct thread, elem);
-  tb = list_entry (b, struct thread, elem);
-  return ta->priority > tb->priority;
-}
-
-
 /* Offset of `stack' member within `struct thread'.
    Used by switch.S, which can't figure it out on its own. */
 uint32_t thread_stack_ofs = offsetof (struct thread, stack);
+
+void
+thread_sleep_until (int32_t ticks_end)
+{
+  struct thread *t = thread_current();
+  t->wake_tick = ticks_end;
+  list_push_back (&wait_list, &t->waitelem);
+  thread_block();
+}
+
+static bool
+compare_priority (const struct list_elem *list_a, const struct list_elem *list_b, void *aux UNUSED)
+{
+  bool result;
+  struct thread *thread_a;
+  struct thread *thread_b;
+
+  ASSERT (list_a != NULL);
+  ASSERT (list_b != NULL);
+  thread_a = list_entry (list_a, struct thread, elem);
+  thread_b = list_entry (list_b, struct thread, elem);
+  result = thread_a->priority > thread_b->priority;
+
+  return result;
+}
