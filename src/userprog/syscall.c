@@ -68,6 +68,7 @@ syscall_handler (struct intr_frame *f)
   int syscall_number;
   int intsize = 4;
   int ptrsize = 4;
+  int fd;
   ASSERT( sizeof(syscall_number) == 4 ); // assuming x86
 
   // The system call number is in the 32-bit word at the caller's stack pointer.
@@ -120,7 +121,7 @@ syscall_handler (struct intr_frame *f)
       const char* filename;
       unsigned initial_size;
       bool return_code;
-	  int sizek = sizeof(initial_size);
+	    int sizek = sizeof(initial_size);
       memread_user(f->esp + 4, &filename, ptrsize);
       memread_user(f->esp + 8, &initial_size, sizek);
 
@@ -144,7 +145,7 @@ syscall_handler (struct intr_frame *f)
     {
       const char* filename;
       int return_code;
-	  //int size = sizeof(filename);
+      
       memread_user(f->esp + 4, &filename,ptrsize);
 
       return_code = sys_open(filename);
@@ -154,7 +155,7 @@ syscall_handler (struct intr_frame *f)
 
   case SYS_FILESIZE: // 7
     {
-      int fd, return_code;
+      int return_code;
       memread_user(f->esp + 4, &fd, intsize);
 
       return_code = sys_filesize(fd);
@@ -164,40 +165,39 @@ syscall_handler (struct intr_frame *f)
 
   case SYS_READ: // 8
     {
-      int fd, return_code;
+      uint32_t return_code;
       void *buffer;
       unsigned size;
-	  int sizek =sizeof(size);
+	    int sizek =sizeof(size);
       memread_user(f->esp + 4, &fd, intsize);
       memread_user(f->esp + 8, &buffer, ptrsize);
-      memread_user(f->esp + 12, &size,sizek );
+      memread_user(f->esp + 12, &size, sizek);
 
       return_code = sys_read(fd, buffer, size);
-      f->eax = (uint32_t) return_code;
+      f->eax = return_code;
       break;
     }
 
   case SYS_WRITE: // 9
     {
-      int fd, return_code;
+      uint32_t return_code;
       const void *buffer;
       unsigned size;
-	  int sizek2 = sizeof(buffer);
-	  int sizek = sizeof(size);
+	    int sizek2 = sizeof(buffer);
+	    int sizek = sizeof(size);
       memread_user(f->esp + 4, &fd, intsize);
       memread_user(f->esp + 8, &buffer, sizek2);
       memread_user(f->esp + 12, &size, sizek);
 
       return_code = sys_write(fd, buffer, size);
-      f->eax = (uint32_t) return_code;
+      f->eax = return_code;
       break;
     }
 
   case SYS_SEEK: // 10
     {
-      int fd;
       unsigned position;
-	  int sizek = sizeof(position);
+	    int sizek = sizeof(position);
       memread_user(f->esp + 4, &fd, intsize);
       memread_user(f->esp + 8, &position, sizek);
 
@@ -207,19 +207,17 @@ syscall_handler (struct intr_frame *f)
 
   case SYS_TELL: // 11
     {
-      int fd;
-      unsigned return_code;
+      uint32_t return_code;
 
       memread_user(f->esp + 4, &fd, intsize);
 
       return_code = sys_tell(fd);
-      f->eax = (uint32_t) return_code;
+      f->eax = return_code;
       break;
     }
 
   case SYS_CLOSE: // 12
     {
-      int fd;
       memread_user(f->esp + 4, &fd, intsize);
 
       sys_close(fd);
