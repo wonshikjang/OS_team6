@@ -95,7 +95,7 @@ syscall_handler (struct intr_frame *f)
   case SYS_EXEC: // 2
     {
       void* cmdline;
-	  memread_user(f->esp + 4, &cmdline, ptrsize);
+	    memread_user(f->esp + 4, &cmdline, ptrsize);
 
       uint32_t return_code = sys_exec((const char*) cmdline);
       f->eax = return_code;
@@ -105,7 +105,7 @@ syscall_handler (struct intr_frame *f)
   case SYS_WAIT: // 3
     {
       pid_t pid;
-	  memread_user(f->esp + 4, &pid, sizeof(pid));
+  	  memread_user(f->esp + 4, &pid, sizeof(pid));
 
       uint32_t return_code = sys_wait(pid);
       f->eax = return_code;

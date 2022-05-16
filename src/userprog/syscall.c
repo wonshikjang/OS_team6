@@ -354,7 +354,7 @@ unsigned sys_tell(int fd) {
     ret = file_tell(file_d->file);
   }
   else
-    ret = -1; // TODO need sys_exit?
+    ret = -1;
 
   lock_release (&filesys_lock);
   return ret;
@@ -380,7 +380,7 @@ int sys_read(int fd, void *buffer, unsigned size) {
   int ret;
 
   if(fd == STDIN) {
-    unsigned i;
+    int i;
     for(i = 0; i < size; ++i) {
       if(! put_user(buffer + i, input_getc()) ) {
         lock_release (&filesys_lock);
