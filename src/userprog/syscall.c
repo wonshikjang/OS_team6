@@ -13,12 +13,9 @@
 #include "threads/synch.h"
 #include "lib/kernel/list.h"
 
-
-#ifdef DEBUG
-#define _DEBUG_PRINTF(...) printf(__VA_ARGS__)
-#else
-#define _DEBUG_PRINTF(...) /* do nothing */
-#endif
+#define STDIN 0
+#define STDOUT 1
+#define STDERR 2
 
 static void syscall_handler (struct intr_frame *);
 
@@ -74,7 +71,6 @@ syscall_handler (struct intr_frame *f)
   // The system call number is in the 32-bit word at the caller's stack pointer.
   memread_user(f->esp, &syscall_number, intsize);
 
-  _DEBUG_PRINTF ("[DEBUG] system call, number = %d!\n", syscall_number);
 
   // Dispatch w.r.t system call number
   // SYS_*** constants are defined in syscall-nr.h
@@ -99,20 +95,20 @@ syscall_handler (struct intr_frame *f)
   case SYS_EXEC: // 2
     {
       void* cmdline;
-	  memread_user(f->esp + 4, &cmdline, ptrsize);
+	    memread_user(f->esp + 4, &cmdline, ptrsize);
 
-      int return_code = sys_exec((const char*) cmdline);
-      f->eax = (uint32_t) return_code;
+      uint32_t return_code = sys_exec((const char*) cmdline);
+      f->eax = return_code;
       break;
     }
 
   case SYS_WAIT: // 3
     {
       pid_t pid;
-	  memread_user(f->esp + 4, &pid, sizeof(pid));
+  	  memread_user(f->esp + 4, &pid, sizeof(pid));
 
-      int ret = sys_wait(pid);
-      f->eax = (uint32_t) ret;
+      uint32_t return_code = sys_wait(pid);
+      f->eax = return_code;
       break;
     }
 
@@ -228,7 +224,6 @@ syscall_handler (struct intr_frame *f)
   /* unhandled case */
   default:
     printf("[ERROR!!] system call %d is unimplemented!\n", syscall_number);
-
     // ensure that waiting (parent) process should wake up and terminate.
     sys_exit(-1);
     break;
@@ -253,17 +248,11 @@ void sys_exit(int status) {
     pcb->exited = true;
     pcb->exitcode = status;
   }
-  else {
-    // pcb == NULL probably means that previously
-    // page allocation has failed in process_execute()
-  }
 
   thread_exit();
 }
 
 pid_t sys_exec(const char *cmdline) {
-  _DEBUG_PRINTF ("[DEBUG] Exec : %s\n", cmdline);
-
   // cmdline is an address to the character buffer, on user memory
   // so a validation check is required
   check_user((const uint8_t*) cmdline);
@@ -275,14 +264,11 @@ pid_t sys_exec(const char *cmdline) {
 }
 
 int sys_wait(pid_t pid) {
-  _DEBUG_PRINTF ("[DEBUG] Wait : %d\n", pid);
   return process_wait(pid);
 }
 
 bool sys_create(const char* filename, unsigned initial_size) {
   bool return_code;
-
-  // memory validation
   check_user((const uint8_t*) filename);
 
   lock_acquire (&filesys_lock);
@@ -293,7 +279,6 @@ bool sys_create(const char* filename, unsigned initial_size) {
 
 bool sys_remove(const char* filename) {
   bool return_code;
-  // memory validation
   check_user((const uint8_t*) filename);
 
   lock_acquire (&filesys_lock);
@@ -303,7 +288,6 @@ bool sys_remove(const char* filename) {
 }
 
 int sys_open(const char* file) {
-  // memory validation
   check_user((const uint8_t*) file);
 
   struct file* file_opened;
@@ -323,13 +307,9 @@ int sys_open(const char* file) {
   fd->file = file_opened; //file save
 
   struct list* fd_list = &thread_current()->file_descriptors;
-  if (list_empty(fd_list)) {
-    // 0, 1, 2 are reserved for stdin, stdout, stderr
-    fd->id = 3;
-  }
-  else {
-    fd->id = (list_entry(list_back(fd_list), struct file_desc, elem)->id) + 1;
-  }
+  if (list_empty(fd_list)) fd->id = 3;
+  else fd->id = (list_entry(list_back(fd_list), struct file_desc, elem)->id) + 1;
+  
   list_push_back(fd_list, &(fd->elem));
 
   lock_release (&filesys_lock);
@@ -360,7 +340,7 @@ void sys_seek(int fd, unsigned position) {
     file_seek(file_d->file, position);
   }
   else
-    return; // TODO need sys_exit?
+    return;
 
   lock_release (&filesys_lock);
 }
@@ -393,14 +373,13 @@ void sys_close(int fd) {
 }
 
 int sys_read(int fd, void *buffer, unsigned size) {
-  // memory validation : [buffer+0, buffer+size) should be all valid
   check_user((const uint8_t*) buffer);
   check_user((const uint8_t*) buffer + size - 1);
 
   lock_acquire (&filesys_lock);
   int ret;
 
-  if(fd == 0) { // stdin
+  if(fd == STDIN) {
     unsigned i;
     for(i = 0; i < size; ++i) {
       if(! put_user(buffer + i, input_getc()) ) {
@@ -426,14 +405,13 @@ int sys_read(int fd, void *buffer, unsigned size) {
 }
 
 int sys_write(int fd, const void *buffer, unsigned size) {
-  // memory validation : [buffer+0, buffer+size) should be all valid
   check_user((const uint8_t*) buffer);
   check_user((const uint8_t*) buffer + size - 1);
 
   lock_acquire (&filesys_lock);
   int ret;
 
-  if(fd == 1) { // write to stdout
+  if(fd == STDOUT) { // write to stdout
     putbuf(buffer, size);
     ret = size;
   }
@@ -550,5 +528,5 @@ find_file_desc(struct thread *t, int fd)
     }
   }
 
-  return NULL; // not found
+  return NULL;
 }
