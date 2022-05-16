@@ -223,7 +223,7 @@ syscall_handler (struct intr_frame *f)
 
   /* unhandled case */
   default:
-    printf("[ERROR] system call %d is unimplemented!\n", syscall_number);
+    printf("[ERROR!] system call %d is unimplemented!\n", syscall_number);
     // ensure that waiting (parent) process should wake up and terminate.
     sys_exit(-1);
     break;
@@ -468,16 +468,6 @@ put_user (uint8_t *udst, uint8_t byte) {
   bool result = (error_code != -1);
   return result;
 }
-
-
-/**
- * Reads a consecutive `bytes` bytes of user memory with the
- * starting address `src` (uaddr), and writes to dst.
- *
- * Returns the number of bytes read.
- * In case of invalid memory access, exit() is called and consequently
- * the process is terminated with return code -1.
- */
 static int
 memread_user (void *src, void *dst, size_t bytes)
 {
@@ -486,14 +476,17 @@ memread_user (void *src, void *dst, size_t bytes)
   for(i=0; i<bytes; i++) {
     t = src+i;
     value = get_user(t);
-    if(value == -1) // segfault or invalid memory access
-      fail_invalid_access();
-	*(char*)(dst + i) = value & 0xff;
+    if(value != -1) {
+		*(char*)(dst + i) = value & 0xff;
+	}
+	else{  
+		fail_invalid_access();
+	}
   }
   return (int)bytes;
 }
 
-/****************** Helper Functions on File Access ********************/
+/****** Helper Function on File Access ********************/
 
 static struct file_desc*
 find_file_desc(struct thread *t, int fd)
@@ -504,11 +497,11 @@ find_file_desc(struct thread *t, int fd)
     return NULL;
   }
 
-  struct list_elem *e;
-
-  if (! list_empty(&t->file_descriptors)) {
-    for(e = list_begin(&t->file_descriptors);
-        e != list_end(&t->file_descriptors); e = list_next(e))
+ 
+  bool empty = list_empty(&t -> file_descriptors);
+  if (!empty) {
+    struct list_elem *e = list_begin(&t->file_descriptors);
+    for(e;e != list_end(&t->file_descriptors); e = list_next(e))
     {
       struct file_desc *desc = list_entry(e, struct file_desc, elem);
       if(desc->id == fd) {
