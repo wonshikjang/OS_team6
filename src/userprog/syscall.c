@@ -223,7 +223,7 @@ syscall_handler (struct intr_frame *f)
 
   /* unhandled case */
   default:
-    printf("[ERROR!!] system call %d is unimplemented!\n", syscall_number);
+    printf("[ERROR] system call %d is unimplemented!\n", syscall_number);
     // ensure that waiting (parent) process should wake up and terminate.
     sys_exit(-1);
     break;
@@ -435,53 +435,38 @@ int sys_write(int fd, const void *buffer, unsigned size) {
 }
 
 /****************** Helper Functions on Memory Access ********************/
-
 static void
 check_user (const uint8_t *uaddr) {
   // check uaddr range or segfaults
-  if(get_user (uaddr) == -1)
-    fail_invalid_access();
+  int32_t result = get_user(uaddr);
+  if( result  == -1)
+  	fail_invalid_access();
 }
 
-/**
- * Reads a single 'byte' at user memory admemory at 'uaddr'.
- * 'uaddr' must be below PHYS_BASE.
- *
- * Returns the byte value if successful (extract the least significant byte),
- * or -1 in case of error (a segfault occurred or invalid uaddr)
- */
 static int32_t
 get_user (const uint8_t *uaddr) {
-  // check that a user pointer `uaddr` points below PHYS_BASE
+  int result; 
   if (! ((void*)uaddr < PHYS_BASE)) {
-    return -1;
+      result = -1;
+	  return result;
   }
 
-  // as suggested in the reference manual, see (3.1.5)
-  int result;
   asm ("movl $1f, %0; movzbl %1, %0; 1:"
       : "=&a" (result) : "m" (*uaddr));
   return result;
 }
 
-/* Writes a single byte (content is 'byte') to user address 'udst'.
- * 'udst' must be below PHYS_BASE.
- *
- * Returns true if successful, false if a segfault occurred.
- */
 static bool
 put_user (uint8_t *udst, uint8_t byte) {
-  // check that a user pointer `udst` points below PHYS_BASE
   if (! ((void*)udst < PHYS_BASE)) {
-    return false;
+    return 0;
   }
 
   int error_code;
-
-  // as suggested in the reference manual, see (3.1.5)
   asm ("movl $1f, %0; movb %b2, %1; 1:"
       : "=&a" (error_code), "=m" (*udst) : "q" (byte));
-  return error_code != -1;
+  bool result = (error_code != -1);
+  return result;
 }
 
 
@@ -497,13 +482,13 @@ static int
 memread_user (void *src, void *dst, size_t bytes)
 {
   int32_t value;
-  size_t i;
+  size_t i,t;
   for(i=0; i<bytes; i++) {
-    value = get_user(src + i);
+    t = src+i;
+    value = get_user(t);
     if(value == -1) // segfault or invalid memory access
       fail_invalid_access();
-
-    *(char*)(dst + i) = value & 0xff;
+	*(char*)(dst + i) = value & 0xff;
   }
   return (int)bytes;
 }
