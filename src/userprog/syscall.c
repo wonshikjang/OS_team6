@@ -238,14 +238,13 @@ void sys_halt(void) {
 }
 
 void sys_exit(int status) {
-  printf("%s: exit(%d)\n", thread_current()->name, status);
+  struct thread *current = thread_current ();
+  printf("%s: exit(%d)\n", current->name, status);
 
-  // The process exits.
-  // wake up the parent process (if it was sleeping) using semaphore,
-  // and pass the return code.
-  struct process_control_block *pcb = thread_current()->pcb;
+ 
+  struct process_control_block *pcb = current->pcb;
   if(pcb != NULL) {
-    pcb->exited = true;
+    pcb->exited = 1;
     pcb->exitcode = status;
   }
 
@@ -253,9 +252,8 @@ void sys_exit(int status) {
 }
 
 pid_t sys_exec(const char *cmdline) {
-  // cmdline is an address to the character buffer, on user memory
-  // so a validation check is required
-  check_user((const uint8_t*) cmdline);
+  const uint8_t* cmd = (const uint8_t*) cmdline;
+  check_user(cmd);
 
   lock_acquire (&filesys_lock); // load() uses filesystem
   pid_t pid = process_execute(cmdline);
@@ -269,7 +267,8 @@ int sys_wait(pid_t pid) {
 
 bool sys_create(const char* filename, unsigned initial_size) {
   bool return_code;
-  check_user((const uint8_t*) filename);
+  const uint8_t* file = (const uint8_t*)filename;
+  check_user(file);
 
   lock_acquire (&filesys_lock);
   return_code = filesys_create(filename, initial_size);
@@ -279,7 +278,8 @@ bool sys_create(const char* filename, unsigned initial_size) {
 
 bool sys_remove(const char* filename) {
   bool return_code;
-  check_user((const uint8_t*) filename);
+  const uint8_t* file = (const uint8_t*)filename;
+  check_user(file);
 
   lock_acquire (&filesys_lock);
   return_code = filesys_remove(filename);
@@ -305,11 +305,15 @@ int sys_open(const char* file) {
   }
 
   fd->file = file_opened; //file save
-
-  struct list* fd_list = &thread_current()->file_descriptors;
-  if (list_empty(fd_list)) fd->id = 3;
-  else fd->id = (list_entry(list_back(fd_list), struct file_desc, elem)->id) + 1;
-  
+  struct thread *current = thread_current();
+  struct list* fd_list = &current->file_descriptors;
+  struct thread *back;
+  bool empty = list_empty(fd_list);
+  if ( empty ) fd->id = 3;
+  else {
+	fd->id = (list_entry(list_back(fd_list),struct file_desc, elem)->id)+1;
+	//fd->id = (back->id) + 1;
+  }
   list_push_back(fd_list, &(fd->elem));
 
   lock_release (&filesys_lock);
