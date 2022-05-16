@@ -125,30 +125,30 @@ start_process (void *pcb_)
   // cmdline handling
   const char **cmdline_tokens = (const char**) palloc_get_page(0);
 
-  struct intr_frame if_;
-  if (cmdline_tokens == NULL){
+  if (cmdline_tokens == NULL)
     printf("[Error] Kernel Error: Not enough memory\n");
+    goto finish_step; // pid being -1, release lock, clean resources
   }
-  else{
-    char* save_ptr;
-    char* token=strtok_r(file_name, " ", &save_ptr);
-    int cnt = 0;
-    while(token!=NULL){
-      cmdline_tokens[cnt++]=token;
-      token=strtok_r(NULL, " ", &save_ptr);
-    }
+  
+  char* save_ptr;
+  char* token=strtok_r(file_name, " ", &save_ptr);
+  int cnt = 0;
+  while(token!=NULL){
+    cmdline_tokens[cnt++]=token;
+    token=strtok_r(NULL, " ", &save_ptr);
+  }
 
-    /* Initialize interrupt frame and load executable. */
-    memset (&if_, 0, sizeof if_);
-    if_.gs = if_.fs = if_.es = if_.ds = if_.ss = SEL_UDSEG;
-    if_.cs = SEL_UCSEG;
-    if_.eflags = FLAG_IF | FLAG_MBS;
-    success = load (file_name, &if_.eip, &if_.esp);
-    if (success) {
-      push_arguments (cmdline_tokens, cnt, &if_.esp);
-    }
-    palloc_free_page (cmdline_tokens);
+  /* Initialize interrupt frame and load executable. */
+  struct intr_frame if_;
+  memset (&if_, 0, sizeof if_);
+  if_.gs = if_.fs = if_.es = if_.ds = if_.ss = SEL_UDSEG;
+  if_.cs = SEL_UCSEG;
+  if_.eflags = FLAG_IF | FLAG_MBS;
+  success = load (file_name, &if_.eip, &if_.esp);
+  if (success) {
+    push_arguments (cmdline_tokens, cnt, &if_.esp);
   }
+  palloc_free_page (cmdline_tokens);
 
 
 finish_step:
