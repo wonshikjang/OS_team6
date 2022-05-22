@@ -5,14 +5,15 @@
 #include "userprog/syscall.h"
 #include "threads/interrupt.h"
 #include "threads/thread.h"
-
-#ifdef virtual memory
 #include "userprog/pagedir.h"
-#include " threads/vaddr.h"
+#include "threads/vaddr.h"
+
+#ifdef VM
 #include "vm/page.h"
 #include "vm/frame.h"
-#define MAX_STACK_SIZE 0x800000
 #endif
+#define MAX_STACK_SIZE 0x800000
+
 
 
 

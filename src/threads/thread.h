@@ -5,7 +5,7 @@
 #include <list.h>
 #include <stdint.h>
 
-#ifdef virtual memory
+#ifdef VM
 #include "vm/page.h"
 #endif
 /* States in a thread's life cycle. */
@@ -122,7 +122,7 @@ struct thread
 
 #endif
 
-#ifdef virtual memory
+#ifdef VM
 	struct supplemental_page_table *supt;
 	struct list mmap_list;
 

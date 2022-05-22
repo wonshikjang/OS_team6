@@ -19,14 +19,14 @@
 #include "threads/thread.h"
 #include "threads/vaddr.h"
 
-#ifdef virtual memory 
 #include "threads/malloc.h"
 #include "vm/frame.h"
 #include "vm/page.h"
+#ifndef VM
 #define vm_frame_allocate(x,y) palloc_get_page(x)
 #define vm_frame_free(x) palloc_free_page(x)
 
-#endif virtual memory
+#endif
 
 
 #ifdef DEBUG
@@ -292,12 +292,12 @@ process_exit (void)
     palloc_free_page(desc); // see sys_open()
   }
 /************hw4 *********/
-#ifdef Virtual Memory
-  struct list *nmlist = &cur->nmap_list;
+#ifdef VM
+  struct list *mmlist = &cur->mmap_list;
   while(!list_empty(mmlist)){
     struct list_elem *e = list_begin(mmlist);
     struct mmap_desc *desc = list_entry(e, struct mmap_desc,elem);
-    ASSERT(sys_munmap(desc->id) = true);
+    ASSERT(sys_munmap(desc->id) == true);
   }
 #endif 
 /*********hw4 ***************/
@@ -332,10 +332,11 @@ process_exit (void)
   // Destroy the pcb object by itself, if it is orphan.
   // see (part 2) of above.
   /**************hw4******************/
-  if (cur->orphan) palloc_free_page (& cur->pcb);
+  if (cur_orphan) palloc_free_page (& cur->pcb);
+#ifdef VM  
   vm_supt_destroy(cur->supt);
   cur->supt = NULL; 
-  
+#endif
   /****************hw4****************/
   
   /* Destroy the current process's page directory and switch back
@@ -459,7 +460,9 @@ load (const char *file_name, void (**eip) (void), void **esp)
   /* Allocate and activate page directory. */
   t->pagedir = pagedir_create ();
   /***********Hw4**********/
+#ifdef VM
   t->supt = vm_supt_create();
+#endif
   /**************hw4*********/
   
   if (t->pagedir == NULL)
@@ -647,13 +650,16 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
       size_t page_zero_bytes = PGSIZE - page_read_bytes;
 
 /***********Hw4**********/
+#ifdef VM 
   struct thread *curr = thread_current();
-  ASSERT(pagedir_get_page(curr->pagedir,upage == NULL);
-  if(! vm_supt_install_filesys(curr->supt,upage,file, ofs,page_read_bytes, page_zero_bytes,writable)){
-  return false;
+  ASSERT(pagedir_get_page(curr->pagedir,upage) == NULL);
+  if(! vm_supt_install_filesys(curr->supt,upage, file, ofs, page_read_bytes,page_zero_bytes, writable)){
+	return false;
   }
-  
 
+  
+  
+#else
 
       /* Get a page of memory. */
       /************hw4**********/ 
@@ -670,7 +676,8 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
           /************hw4**********/ 
           return false;
         }
-      memset (kpage + page_read_bytes, 0, page_zero_bytes);
+     
+	 memset (kpage + page_read_bytes, 0, page_zero_bytes);
 
       /* Add the page to the process's address space. */
       if (!install_page (upage, kpage, writable))
@@ -680,14 +687,16 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
           /************hw4**********/ 
           return false;
         }
-
+#endif
       /* Advance. */
       read_bytes -= page_read_bytes;
       zero_bytes -= page_zero_bytes;
       upage += PGSIZE;
       /************hw4**********/ 
+#ifdef VM
       ofs += PGSIZE;
-      /************hw4**********/ 
+#endif      
+	  /************hw4**********/ 
      
     }
   return true;
@@ -783,8 +792,10 @@ install_page (void *upage, void *kpage, bool writable)
    /************hw4**********/ 
   bool success = (pagedir_get_page(t-> pagedir , upage) == NULL);
   success = success && pagedir_set_page(t->pagedir, upage, kpage, writable);
+#ifdef VM  
   success = success & vm_supt_install_frame(t->supt, upage , kpage);
   if(success) vm_frame_unpin(kpage);
+#endif
   return success;
   /************hw4**********/ 
 }

@@ -610,7 +610,7 @@ init_thread (struct thread *t, const char *name, int priority)
   list_init(&t->file_descriptors);
   t->executing_file = NULL;
 #endif
-#ifdef virtual memory
+#ifdef VM
   list_init(&t->mmap_list);
 #endif 
 

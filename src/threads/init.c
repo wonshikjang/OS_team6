@@ -37,7 +37,7 @@
 #include "filesys/filesys.h"
 #include "filesys/fsutil.h"
 #endif
-#ifdef Virtual Memory
+#ifdef VM
 #include "vm/frame.h"
 #include "vm/swap.h"
 #endif
@@ -103,7 +103,7 @@ main (void)
   paging_init ();
 
  /**********hw4**************/
- #ifdef virtual memory
+ #ifdef VM
 	vm_frame_init();
  #endif
 
@@ -134,7 +134,9 @@ main (void)
   locate_block_devices ();
   filesys_init (format_filesys);
 #endif
-
+#ifdef VM
+	vm_swap_init();
+#endif
   printf ("Boot complete.\n");
   
   /* Run actions specified on kernel command line. */
