@@ -610,6 +610,10 @@ init_thread (struct thread *t, const char *name, int priority)
   list_init(&t->file_descriptors);
   t->executing_file = NULL;
 #endif
+#ifdef virtual memory
+  list_init(&t->mmap_list);
+#endif 
+
 }
 
 /* Allocates a SIZE-byte frame at the top of thread T's stack and

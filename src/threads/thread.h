@@ -5,6 +5,9 @@
 #include <list.h>
 #include <stdint.h>
 
+#ifdef virtual memory
+#include "vm/page.h"
+#endif
 /* States in a thread's life cycle. */
 enum thread_status
   {
@@ -114,6 +117,15 @@ struct thread
     struct list file_descriptors;       /* List of file_descriptors the thread contains */
 
     struct file *executing_file;        /* The executable file of associated process. */
+	
+	uint8_t *current_esp;
+
+#endif
+
+#ifdef virtual memory
+	struct supplemental_page_table *supt;
+	struct list mmap_list;
+
 #endif
 
     /* Owned by thread.c. */

@@ -19,6 +19,15 @@
 #include "threads/thread.h"
 #include "threads/vaddr.h"
 
+#ifdef virtual memory 
+#include "threads/malloc.h"
+#include "vm/frame.h"
+#include "vm/page.h"
+#define vm_frame_allocate(x,y) palloc_get_page(x)
+#define vm_frame_free(x) palloc_free_page(x)
+
+#endif virtual memory
+
 
 #ifdef DEBUG
 #define _DEBUG_PRINTF(...) printf(__VA_ARGS__)
@@ -178,7 +187,7 @@ start_process (void *pcb_)
       *((int*) if_.esp) = cnt;
 
       // setting ret addr
-      *esp -= 4;
+      if_.esp -= 4;
       *((int*) if_.esp) = 0;
     }
     palloc_free_page (cmdline_tokens);
@@ -282,6 +291,16 @@ process_exit (void)
     file_close(desc->file);
     palloc_free_page(desc); // see sys_open()
   }
+/************hw4 *********/
+#ifdef Virtual Memory
+  struct list *nmlist = &cur->nmap_list;
+  while(!list_empty(mmlist)){
+    struct list_elem *e = list_begin(mmlist);
+    struct mmap_desc *desc = list_entry(e, struct mmap_desc,elem);
+    ASSERT(sys_munmap(desc->id) = true);
+  }
+#endif 
+/*********hw4 ***************/
 
   // 2. clean up pcb object of all children processes
   struct list *child_list = &cur->child_list;
@@ -304,15 +323,21 @@ process_exit (void)
     file_allow_write(cur->executing_file);
     file_close(cur->executing_file);
   }
-
-  // Unblock the waiting parent process, if any, from wait().
-  // now its resource (pcb on page, etc.) can be freed.
+  /***********hw4  *****/
+  cur->pcb->exited = true;
+  bool cur_orphan = cur-> pcb-> orphan;
+  /***********hw4 *********/
   sema_up (&cur->pcb->sema_wait);
 
   // Destroy the pcb object by itself, if it is orphan.
   // see (part 2) of above.
-  if (cur->pcb->orphan == true) palloc_free_page (& cur->pcb);
-
+  /**************hw4******************/
+  if (cur->orphan) palloc_free_page (& cur->pcb);
+  vm_supt_destroy(cur->supt);
+  cur->supt = NULL; 
+  
+  /****************hw4****************/
+  
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */
   pd = cur->pagedir;

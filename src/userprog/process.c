@@ -19,6 +19,15 @@
 #include "threads/thread.h"
 #include "threads/vaddr.h"
 
+#ifdef virtual memory 
+#include "threads/malloc.h"
+#include "vm/frame.h"
+#include "vm/page.h"
+#define vm_frame_allocate(x,y) palloc_get_page(x)
+#define vm_frame_free(x) palloc_free_page(x)
+
+#endif virtual memory
+
 
 #ifdef DEBUG
 #define _DEBUG_PRINTF(...) printf(__VA_ARGS__)
@@ -282,6 +291,16 @@ process_exit (void)
     file_close(desc->file);
     palloc_free_page(desc); // see sys_open()
   }
+/************hw4 *********/
+#ifdef Virtual Memory
+  struct list *nmlist = &cur->nmap_list;
+  while(!list_empty(mmlist)){
+    struct list_elem *e = list_begin(mmlist);
+    struct mmap_desc *desc = list_entry(e, struct mmap_desc,elem);
+    ASSERT(sys_munmap(desc->id) = true);
+  }
+#endif 
+/*********hw4 ***************/
 
   // 2. clean up pcb object of all children processes
   struct list *child_list = &cur->child_list;
@@ -304,18 +323,25 @@ process_exit (void)
     file_allow_write(cur->executing_file);
     file_close(cur->executing_file);
   }
-
-  // Unblock the waiting parent process, if any, from wait().
-  // now its resource (pcb on page, etc.) can be freed.
+  /***********hw4  *****/
+  cur->pcb->exited = true;
+  bool cur_orphan = cur-> pcb-> orphan;
+  /***********hw4 *********/
   sema_up (&cur->pcb->sema_wait);
 
   // Destroy the pcb object by itself, if it is orphan.
   // see (part 2) of above.
-  if (cur->pcb->orphan == true) palloc_free_page (& cur->pcb);
-
+  /**************hw4******************/
+  if (cur->orphan) palloc_free_page (& cur->pcb);
+  vm_supt_destroy(cur->supt);
+  cur->supt = NULL; 
+  
+  /****************hw4****************/
+  
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */
   pd = cur->pagedir;
+  
   if (pd != NULL)
   {
     /* Correct ordering here is crucial.  We must set
@@ -432,6 +458,10 @@ load (const char *file_name, void (**eip) (void), void **esp)
 
   /* Allocate and activate page directory. */
   t->pagedir = pagedir_create ();
+  /***********Hw4**********/
+  t->supt = vm_supt_create();
+  /**************hw4*********/
+  
   if (t->pagedir == NULL)
     goto finish;
   process_activate ();
@@ -616,15 +646,28 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
       size_t page_read_bytes = read_bytes < PGSIZE ? read_bytes : PGSIZE;
       size_t page_zero_bytes = PGSIZE - page_read_bytes;
 
+/***********Hw4**********/
+  struct thread *curr = thread_current();
+  ASSERT(pagedir_get_page(curr->pagedir,upage == NULL);
+  if(! vm_supt_install_filesys(curr->supt,upage,file, ofs,page_read_bytes, page_zero_bytes,writable)){
+  return false;
+  }
+  
+
+
       /* Get a page of memory. */
-      uint8_t *kpage = palloc_get_page (PAL_USER);
+      /************hw4**********/ 
+      uint8_t *kpage = vm_frame_allocate (PAL_USER,upage);
+      /************hw4**********/ 
       if (kpage == NULL)
         return false;
 
       /* Load this page. */
       if (file_read (file, kpage, page_read_bytes) != (int) page_read_bytes)
         {
-          palloc_free_page (kpage);
+          /************hw4**********/
+          vm_frame_free (kpage);
+          /************hw4**********/ 
           return false;
         }
       memset (kpage + page_read_bytes, 0, page_zero_bytes);
@@ -632,7 +675,9 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
       /* Add the page to the process's address space. */
       if (!install_page (upage, kpage, writable))
         {
-          palloc_free_page (kpage);
+          /************hw4**********/ 
+          vm_frame_free (kpage);
+          /************hw4**********/ 
           return false;
         }
 
@@ -640,6 +685,10 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
       read_bytes -= page_read_bytes;
       zero_bytes -= page_zero_bytes;
       upage += PGSIZE;
+      /************hw4**********/ 
+      ofs += PGSIZE;
+      /************hw4**********/ 
+     
     }
   return true;
 }
@@ -699,14 +748,18 @@ setup_stack (void **esp)
   uint8_t *kpage;
   bool success = false;
 
-  kpage = palloc_get_page (PAL_USER | PAL_ZERO);
+  /************hw4**********/ 
+  kpage = vm_frame_allocate(PAL_USER|PAL_ZERO, PHYS_BASE - PGSIZE);
+  /************hw4**********/ 
   if (kpage != NULL)
     {
       success = install_page (((uint8_t *) PHYS_BASE) - PGSIZE, kpage, true);
       if (success)
         *esp = PHYS_BASE;
       else
-        palloc_free_page (kpage);
+      /************hw4**********/ 
+        vm_frame_free (kpage);
+      /************hw4**********/ 
     }
   return success;
 }
@@ -727,6 +780,11 @@ install_page (void *upage, void *kpage, bool writable)
 
   /* Verify that there's not already a page at that virtual
      address, then map our page there. */
-  return (pagedir_get_page (t->pagedir, upage) == NULL
-          && pagedir_set_page (t->pagedir, upage, kpage, writable));
+   /************hw4**********/ 
+  bool success = (pagedir_get_page(t-> pagedir , upage) == NULL);
+  success = success && pagedir_set_page(t->pagedir, upage, kpage, writable);
+  success = success & vm_supt_install_frame(t->supt, upage , kpage);
+  if(success) vm_frame_unpin(kpage);
+  return success;
+  /************hw4**********/ 
 }
