@@ -161,19 +161,19 @@ page_fault (struct intr_frame *f)
   write = (f->error_code & PF_W) != 0;
   user = (f->error_code & PF_U) != 0;
 
-#ifdef Virtual memory
+#ifdef VM
   struct thread *curr = thread_current(); 
   void* fault_page = (void*) pg_round_down(fault_addr);
 
   if (!not_present) {
     goto PAGE_FAULT_VIOLATED_ACCESS;
   }
-  
+  void* esp;
   if(user){
-     void* esp = f->esp;
+    esp = f->esp;
   }
   else{
-    void *esp = curr->current_esp;
+    esp = curr->current_esp;
   }
 //void* esp = user ? f->esp : curr->current_esp;
 

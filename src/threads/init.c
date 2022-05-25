@@ -135,7 +135,7 @@ main (void)
   filesys_init (format_filesys);
 #endif
 #ifdef VM
-	vm_swap_init();
+	vm_swap_init ();
 #endif
   printf ("Boot complete.\n");
   
