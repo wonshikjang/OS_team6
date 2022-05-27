@@ -279,7 +279,6 @@ void sys_exit(int status) {
  
   struct process_control_block *pcb = current->pcb;
   if(pcb != NULL) {
-    pcb->exited = 1;
     pcb->exitcode = status;
   }
 

@@ -175,7 +175,6 @@ page_fault (struct intr_frame *f)
   else{
     esp = curr->current_esp;
   }
-//void* esp = user ? f->esp : curr->current_esp;
 
 //stack Growth
   bool on_stack_frame; 

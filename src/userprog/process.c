@@ -694,7 +694,7 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
       upage += PGSIZE;
       /************hw4**********/ 
 #ifdef VM
-      ofs += PGSIZE;
+      ofs = ofs + PGSIZE;
 #endif      
 	  /************hw4**********/ 
      
@@ -791,9 +791,9 @@ install_page (void *upage, void *kpage, bool writable)
      address, then map our page there. */
    /************hw4**********/ 
   bool success = (pagedir_get_page(t-> pagedir , upage) == NULL);
-  success = success && pagedir_set_page(t->pagedir, upage, kpage, writable);
+  if(success) success = pagedir_set_page(t->pagedir, upage, kpage, writable);
 #ifdef VM  
-  success = success & vm_supt_install_frame(t->supt, upage , kpage);
+  success = success && vm_supt_install_frame(t->supt, upage , kpage);
   if(success) vm_frame_unpin(kpage);
 #endif
   return success;
